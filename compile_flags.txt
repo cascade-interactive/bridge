@@ -1,3 +1,0 @@
--std=c++20
--IC:/Users/Alexander/Documents/Git/bridge/desktop/include
--IC:/Users/Alexander/Documents/Git/bridge/shared
