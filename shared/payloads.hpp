@@ -13,7 +13,7 @@
 // Position uses double for precision (GPS needs it).
 // Everything else uses float -- physical noise floors are well within float range.
 
-#pragma pack(1)
+#pragma pack(push, 1)
 
 // ── Core protocol payloads (0x00–0x1F) ───────────────────────────────────────
 
@@ -77,4 +77,4 @@ struct ActuatorPayload {
   float feedback;       // actual position if known, NAN if not available
 };
 
-#pragma pack()
+#pragma pack(pop)

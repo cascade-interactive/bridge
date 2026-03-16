@@ -46,7 +46,6 @@ sequence = 0
 elevator = Elevator()
 dt = 0.01
 
-
 while True:
 
     # Simple falling motion
@@ -56,6 +55,7 @@ while True:
 
     # Receive
     try:
+        data, addr = bridgeSocket.recvfrom(1024)
         data, addr = bridgeSocket.recvfrom(1024)
         
         if validate_packet(data, verbose=True):

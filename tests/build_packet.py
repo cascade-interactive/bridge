@@ -127,6 +127,7 @@ def parse_header(data: bytes) -> dict:
 
 
 def validate_packet(data: bytes, verbose=True) -> bool:
+
     if len(data) < HEADER_SIZE:
         if verbose: print(f"[packet] Too small ({len(data)} bytes)")
         return False

@@ -38,44 +38,8 @@ std::string parsePacket(const std::string& data) {
   }
 }
 
-std::string buildResponse(const uint16_t sequence_number) {
-  PacketHeader header{};
-  header.magic        = PACKET_MAGIC;
-  header.version      = PACKET_VERSION;
-  header.payload_type = static_cast<uint8_t>(PayloadType::ACTUATOR);
-  header.device_id    = static_cast<uint8_t>(DeviceID::ESP_0);
-  // NO CRC
-  header.flags        = FLAG_NO_CRC;
-  header.sequence     = sequence_number;
-  header.length       = sizeof(ActuatorPayload);
-  header.reserved     = 0x0000;
-  header.timestamp_us = std::chrono::duration_cast<std::chrono::microseconds>(
-                            std::chrono::steady_clock::now().time_since_epoch())
-                            .count();
-
-  ActuatorPayload payload{};
-  payload.actuator_id = 1;  // Example actuator command (e.g., 50% throttle)
-  payload.command     = 100.0f;  // Command value (e.g., 0.5 for 50% throttle)
-  payload.feedback    = 0.0f;    // Optional feedback field, set to 0 for now
-
-  Packet<ActuatorPayload> packet{};
-  packet.header  = header;
-  packet.payload = payload;
-  packet.crc32   = 0;  // No CRC for this example
-
-  // Serialize packet to string
-  std::string serialized_packet(
-      sizeof(PacketHeader) + sizeof(ActuatorPayload) + sizeof(uint32_t), '\0');
-  std::memcpy(&serialized_packet[0], &packet.header, sizeof(PacketHeader));
-  std::memcpy(&serialized_packet[sizeof(PacketHeader)], &packet.payload,
-              sizeof(ActuatorPayload));
-  std::memcpy(
-      &serialized_packet[sizeof(PacketHeader) + sizeof(ActuatorPayload)],
-      &packet.crc32, sizeof(uint32_t));
-  return serialized_packet;
-}
-
 int main() {
+
   uint16_t sequence_number = 0;
   UDPSocket SimListener(6769, true);
   UDPSocket SimSender;
@@ -86,8 +50,21 @@ int main() {
     if (!data.empty()) {
       parsePacket(data);
     }
-    sequence_number++;
-    SimSender.send("127.0.0.1", 5000, buildResponse(sequence_number));
+
+    ActuatorPayload payload{};
+    payload.actuator_id = 0;
+    payload.command     = 100;
+    payload.feedback    = 0;
+
+    auto packet =
+        buildPacket(payload, PayloadType::ACTUATOR, DeviceID::ESP_0,
+                    FLAG_NO_CRC, sequence_number++,
+                    static_cast<uint64_t>(
+                        std::chrono::duration_cast<std::chrono::microseconds>(
+                            std::chrono::steady_clock::now().time_since_epoch())
+                            .count()));
+
+    SimSender.send("127.0.0.1", 5000, &packet, sizeof(packet));
   }
 
   std::this_thread::sleep_for(
