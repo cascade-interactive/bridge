@@ -1,80 +1,147 @@
+#include <stdio.h>
 #include <chrono>
 #include <cstdint>
-#include <iostream>
-#include <thread>
+#include <cstring>
+#include <string>
 #include "bridge/sockets/SerialPort.hpp"
 #include "bridge/sockets/UDPSocket.hpp"
 #include "packet.hpp"
 #include "payloads.hpp"
 #include "payloads/sim_payloads.hpp"
 
-std::string parsePacket(const std::string& data) {
-  if (data.size() < sizeof(PacketHeader)) {
-    std::cout << "Received data too small to be a valid packet." << std::endl;
-    return "Invalid packet: Too small";
-  }
+// ── Globals ───────────────────────────────────────────────────────────────────
 
-  if (!validatePacket(reinterpret_cast<const uint8_t*>(data.data()),
-                      data.size())) {
-    std::cout << "Received invalid packet." << std::endl;
-    return "Invalid packet: Invalid format or CRC";
-  }
+static SerialPort* g_esp = nullptr;
+static UDPSocket* g_sim  = nullptr;
+static uint32_t g_seq    = 0;
 
-  PacketHeader header =
-      extractHeader(reinterpret_cast<const uint8_t*>(data.data()));
-  std::cout << "Received valid packet: Version " << header.version
-            << ", Length " << header.length << std::endl;
+static std::string g_serialBuf;
 
-  // We are only checking for sim payloads here for now
+static uint64_t nowMicros() {
+  return static_cast<uint64_t>(
+      std::chrono::duration_cast<std::chrono::microseconds>(
+          std::chrono::steady_clock::now().time_since_epoch())
+          .count());
+}
+
+// ── Handlers ──────────────────────────────────────────────────────────────────
+
+void onPhysicsPacket(const PhysicsStatePayload& payload,
+                     const PacketHeader& header) {
+  printf("[sim] pos=(%.2f, %.2f, %.2f)  vel=(%.2f, %.2f, %.2f)\n",
+         payload.pos_x, payload.pos_y, payload.pos_z, payload.vel_x,
+         payload.vel_y, payload.vel_z);
+
+  auto packet =
+      buildPacket(payload, static_cast<PayloadType>(SimPayloadType::PHYSICS),
+                  DeviceID::BRIDGE,
+                  FLAG_NONE,  // serial -- compute CRC
+                  g_seq++, header.timestamp_us);
+
+  const int wireSize =
+      sizeof(PacketHeader) + sizeof(PhysicsStatePayload) + sizeof(uint32_t);
+  g_esp->send(reinterpret_cast<const uint8_t*>(&packet), wireSize);
+}
+
+void onActuatorPacket(const ActuatorPayload& payload,
+                      const PacketHeader& header) {
+  printf("[esp] actuator_id=%u  command=%.2f\n", payload.actuator_id,
+         payload.command);
+
+  auto packet = buildPacket(payload, PayloadType::ACTUATOR, DeviceID::BRIDGE,
+                            FLAG_NO_CRC,  // UDP -- skip CRC
+                            g_seq++, nowMicros());
+
+  const int wireSize =
+      sizeof(PacketHeader) + sizeof(ActuatorPayload) + sizeof(uint32_t);
+  g_sim->send("127.0.0.1", 5000, &packet, wireSize);
+}
+
+// ── Dispatch ──────────────────────────────────────────────────────────────────
+
+void dispatchPacket(const uint8_t* buf, int size) {
+  PacketHeader header = extractHeader(buf);
+
   if (header.payload_type == static_cast<uint8_t>(SimPayloadType::PHYSICS)) {
-    PhysicsStatePayload sim_payload;
-    std::memcpy(&sim_payload, data.data() + sizeof(PacketHeader),
-                sizeof(PhysicsStatePayload));
-    std::cout << "Sim Payload: Location " << sim_payload.pos_z
-              << ", Acceleration " << sim_payload.accel_z << std::endl;
-    return "Valid Sim Payload";
+    onPhysicsPacket(extractPayload<PhysicsStatePayload>(buf), header);
+  } else if (header.payload_type ==
+             static_cast<uint8_t>(PayloadType::ACTUATOR)) {
+    onActuatorPacket(extractPayload<ActuatorPayload>(buf), header);
   } else {
-    std::cout << "Unknown payload type: " << header.payload_type << std::endl;
-    return "Invalid packet: Unknown payload type";
+    printf("[dispatch] Unknown payload type 0x%02X\n", header.payload_type);
   }
 }
 
-int main() {
+void parsePacket(const std::string& data, const std::string& source) {
+  const auto* buf = reinterpret_cast<const uint8_t*>(data.data());
+  const int size  = static_cast<int>(data.size());
 
-  uint16_t sequence_number = 0;
-  UDPSocket SimListener(6769, true);
-  UDPSocket SimSender;
-
-  SerialPort* esp = new SerialPort("COM3", 115200);
-  esp->printStatus();
-
-  std::cout << "Listening for UDP packets on port 6967..." << std::endl;
-
-  while (true) {
-    std::string data = SimListener.receive();
-    if (!data.empty()) {
-      parsePacket(data);
-    }
-
-    ActuatorPayload payload{};
-    payload.actuator_id = 0;
-    payload.command     = 6000;
-    payload.feedback    = 0;
-
-    auto packet =
-        buildPacket(payload, PayloadType::ACTUATOR, DeviceID::ESP_0,
-                    FLAG_NO_CRC, sequence_number++,
-                    static_cast<uint64_t>(
-                        std::chrono::duration_cast<std::chrono::microseconds>(
-                            std::chrono::steady_clock::now().time_since_epoch())
-                            .count()));
-
-    SimSender.send("127.0.0.1", 5000, &packet, sizeof(packet));
+  if (!validatePacket(buf, size)) {
+    printf("[%s] Invalid packet (%d bytes)\n", source.c_str(), size);
+    return;
   }
 
-  std::this_thread::sleep_for(
-      std::chrono::seconds(10));  // Keep the program running for a while
+  dispatchPacket(buf, size);
+}
 
-  delete esp;
+// ── Serial accumulator ────────────────────────────────────────────────────────
+
+void feedSerial(const std::string& incoming) {
+  g_serialBuf += incoming;
+
+  while (true) {
+    if (g_serialBuf.size() < sizeof(PacketHeader))
+      break;
+
+    // Check magic -- if wrong, drop one byte and retry
+    PacketHeader h{};
+    std::memcpy(&h, g_serialBuf.data(), sizeof(PacketHeader));
+
+    if (h.magic != PACKET_MAGIC) {
+      g_serialBuf.erase(0, 1);
+      continue;
+    }
+
+    // Sanity check length before waiting to accumulate
+    if (h.length > 1024) {
+      printf("[serial] Unreasonable length %u, dropping magic\n", h.length);
+      g_serialBuf.erase(0, 4);
+      continue;
+    }
+
+    const int totalSize = sizeof(PacketHeader) + h.length + sizeof(uint32_t);
+    if ((int)g_serialBuf.size() < totalSize)
+      break;  // wait for more bytes
+
+    parsePacket(g_serialBuf.substr(0, totalSize), "serial");
+    g_serialBuf.erase(0, totalSize);
+  }
+}
+
+// ── Main ──────────────────────────────────────────────────────────────────────
+
+int main() {
+  UDPSocket simListener(6769, true);
+  UDPSocket simSender;
+  SerialPort esp("COM3", 115200);
+
+  g_esp = &esp;
+  g_sim = &simSender;
+
+  esp.printStatus();
+  printf("Bridge running...\n");
+
+  while (true) {
+    // UDP ingress (sim → bridge → ESP)
+    std::string sim_inbound = simListener.receive();
+    if (!sim_inbound.empty())
+      parsePacket(sim_inbound, "udp");
+
+    // Serial ingress (ESP → bridge → sim)
+    std::string esp_inbound = esp.receive();
+    if (!esp_inbound.empty())
+      feedSerial(esp_inbound);
+  }
+
   return 0;
 }

@@ -5,7 +5,7 @@ from build_packet import (build_packet, build_physics_payload, validate_packet, 
 
 
 class Elevator:
-    def __init__(self, position: float = 10.0, gravity: float = -9.81, mass: float = 500.0, grounded = False, previous_velocity = 0.0):
+    def __init__(self, position: float = 100.0, gravity: float = -9.81, mass: float = 500.0, grounded = False, previous_velocity = 0.0):
         self.position = position
         self.velocity = 0.0
         self.acceleration = 0.0
