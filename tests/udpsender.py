@@ -12,7 +12,7 @@ class Elevator:
         self.gravity = gravity
         self.mass = mass
         self.arrested = False
-        self.friction_coefficient = 200
+        self.friction_coefficient = 0
         self.brake_force = 0.0
         self.net_force = 0.0
         self.grounded = False
@@ -65,9 +65,13 @@ simSocket.sendto(INIT, (UDP_IP, OUTBOUND_PORT))
 sequence = 0
 
 elevator = Elevator()
-dt = 0.01
+last_time = time.monotonic()
 
 while True:
+
+    now = time.monotonic()
+    dt = now - last_time
+    last_time = now
 
     # Simple falling motion
     if not elevator.grounded:
@@ -127,6 +131,6 @@ while True:
     # print(f"TX: PHYSICS  seq={sequence}  size={len(packet)} bytes")
     sequence += 1
 
-    time.sleep(dt)  # ~100hz
+    time.sleep(0.01)  # ~100hz
     
 
