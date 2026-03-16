@@ -11,7 +11,9 @@ set(BRIDGE_SHARED_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../shared")
 add_executable(simbridge_desktop
   app/main.cpp
   app/sockets/UDPSocket.cpp
+  app/sockets/SerialPort.cpp
   include/bridge/sockets/UDPSocket.hpp
+  include/bridge/sockets/SerialPort.hpp
 )
 
 target_include_directories(simbridge_desktop
@@ -23,5 +25,7 @@ target_include_directories(simbridge_desktop
 source_group(TREE "${CMAKE_CURRENT_SOURCE_DIR}" FILES
   app/main.cpp
   app/sockets/UDPSocket.cpp
+  app/sockets/SerialPort.cpp
+  include/bridge/sockets/SerialPort.hpp
   include/bridge/sockets/UDPSocket.hpp
 )
