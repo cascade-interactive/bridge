@@ -51,14 +51,15 @@ UDPSocket::~UDPSocket() {
   std::cout << "Socket closed" << std::endl;
 }
 
-void UDPSocket::send(std::string ip, int port, std::string message) {
-  sockaddr_in target_addr;
-  target_addr.sin_family = AF_INET;
-  target_addr.sin_port   = htons(port);
-  inet_pton(AF_INET, ip.c_str(), &target_addr.sin_addr);
+void UDPSocket::send(const std::string& ip, int port, const void* data,
+                     int size) {
+  sockaddr_in dest{};
+  dest.sin_family = AF_INET;
+  dest.sin_port   = htons(port);
+  inet_pton(AF_INET, ip.c_str(), &dest.sin_addr);
 
-  sendto(sock, message.c_str(), message.size(), 0, (sockaddr*)&target_addr,
-         sizeof(target_addr));
+  sendto(sock, static_cast<const char*>(data), size, 0,
+         reinterpret_cast<sockaddr*>(&dest), sizeof(dest));
 }
 
 std::string UDPSocket::receive() {

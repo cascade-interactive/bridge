@@ -26,7 +26,7 @@ class UDPSocket {
   UDPSocket(int port = 0, bool non_blocking = true);
   ~UDPSocket();
 
-  void send(std::string ip, int port, std::string message);
+  void send(const std::string& ip, int port, const void* data, int size);
   std::string receive();
 
  private:
