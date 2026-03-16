@@ -9,10 +9,22 @@
 #include "payloads.hpp"
 #include "payloads/sim_payloads.hpp"
 
+// ── Temp Prototypes ──────────────────────────────────────────────────────────
+
+template <typename T>
+void forwardToVisualizer(const T& payload, PayloadType type,
+                         uint64_t timestamp_us);
+
 // ── Globals ───────────────────────────────────────────────────────────────────
+
+// Port Addresses
+static constexpr int BRIDGE_INBOUND_PORT = 6769;
+static constexpr int SIM_INBOUND_PORT    = 5000;
+static constexpr int VIZ_OUTBOUND_PORT   = 4200;
 
 static SerialPort* g_esp = nullptr;
 static UDPSocket* g_sim  = nullptr;
+static UDPSocket* g_viz  = nullptr;
 static uint32_t g_seq    = 0;
 
 static std::string g_serialBuf;
@@ -41,6 +53,10 @@ void onPhysicsPacket(const PhysicsStatePayload& payload,
   const int wireSize =
       sizeof(PacketHeader) + sizeof(PhysicsStatePayload) + sizeof(uint32_t);
   g_esp->send(reinterpret_cast<const uint8_t*>(&packet), wireSize);
+
+  forwardToVisualizer(payload,
+                      static_cast<PayloadType>(SimPayloadType::PHYSICS),
+                      header.timestamp_us);
 }
 
 void onActuatorPacket(const ActuatorPayload& payload,
@@ -54,7 +70,9 @@ void onActuatorPacket(const ActuatorPayload& payload,
 
   const int wireSize =
       sizeof(PacketHeader) + sizeof(ActuatorPayload) + sizeof(uint32_t);
-  g_sim->send("127.0.0.1", 5000, &packet, wireSize);
+  g_sim->send("127.0.0.1", SIM_INBOUND_PORT, &packet, wireSize);
+
+  forwardToVisualizer(payload, PayloadType::ACTUATOR, header.timestamp_us);
 }
 
 // ── Dispatch ──────────────────────────────────────────────────────────────────
@@ -118,15 +136,33 @@ void feedSerial(const std::string& incoming) {
   }
 }
 
+// ── Visualizer forwarding ────────────────────────────────────────────────────\
+
+template <typename T>
+void forwardToVisualizer(const T& payload, PayloadType type,
+                         uint64_t timestamp_us) {
+  if (!g_viz)
+    return;
+
+  auto packet = buildPacket(payload, type, DeviceID::BRIDGE, FLAG_NO_CRC,
+                            g_seq++, timestamp_us);
+
+  const int wireSize = sizeof(PacketHeader) + sizeof(T) + sizeof(uint32_t);
+
+  g_viz->send("127.0.0.1", VIZ_OUTBOUND_PORT, &packet, wireSize);
+}
+
 // ── Main ──────────────────────────────────────────────────────────────────────
 
 int main() {
-  UDPSocket simListener(6769, true);
+  UDPSocket simListener(BRIDGE_INBOUND_PORT, true);
   UDPSocket simSender;
+  UDPSocket vizSender;
   SerialPort esp("COM3", 115200);
 
   g_esp = &esp;
   g_sim = &simSender;
+  g_viz = &vizSender;
 
   esp.printStatus();
   printf("Bridge running...\n");
