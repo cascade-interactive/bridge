@@ -63,6 +63,17 @@ BAROMETER_FORMAT = "<ff"
 PHYSICS_SIZE = struct.calcsize(PHYSICS_FORMAT)
 BAROMETER_SIZE = struct.calcsize(BAROMETER_FORMAT)
 
+ACTUATOR_FORMAT = "<Bff"  # actuator_id, command, feedback
+ACTUATOR_SIZE   = struct.calcsize(ACTUATOR_FORMAT)  # 9 bytes
+
+def parse_actuator_payload(data: bytes) -> dict:
+    actuator_id, command, feedback = struct.unpack_from(ACTUATOR_FORMAT, data, HEADER_SIZE)
+    return {
+        "actuator_id": actuator_id,
+        "command":     command,
+        "feedback":    feedback,
+    }
+
 
 def build_physics_payload(
     pos_x: float, pos_y: float, pos_z: float,
