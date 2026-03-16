@@ -2,6 +2,7 @@
 #include <cstdint>
 #include <iostream>
 #include <thread>
+#include "bridge/sockets/SerialPort.hpp"
 #include "bridge/sockets/UDPSocket.hpp"
 #include "packet.hpp"
 #include "payloads.hpp"
@@ -43,6 +44,10 @@ int main() {
   uint16_t sequence_number = 0;
   UDPSocket SimListener(6769, true);
   UDPSocket SimSender;
+
+  SerialPort* esp = new SerialPort("COM3", 115200);
+  esp->printStatus();
+
   std::cout << "Listening for UDP packets on port 6967..." << std::endl;
 
   while (true) {
@@ -53,7 +58,7 @@ int main() {
 
     ActuatorPayload payload{};
     payload.actuator_id = 0;
-    payload.command     = 100;
+    payload.command     = 6000;
     payload.feedback    = 0;
 
     auto packet =
@@ -69,4 +74,7 @@ int main() {
 
   std::this_thread::sleep_for(
       std::chrono::seconds(10));  // Keep the program running for a while
+
+  delete esp;
+  return 0;
 }
