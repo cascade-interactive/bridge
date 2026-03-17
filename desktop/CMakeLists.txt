@@ -28,4 +28,5 @@ source_group(TREE "${CMAKE_CURRENT_SOURCE_DIR}" FILES
   app/sockets/SerialPort.cpp
   include/bridge/sockets/SerialPort.hpp
   include/bridge/sockets/UDPSocket.hpp
+  include/bridge/structs/states.hpp
 )
