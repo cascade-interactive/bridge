@@ -57,16 +57,11 @@ class SimBridge {
       PayloadT payload = extractPayload<PayloadT>(raw_data);
       handler(payload, header);
     };
-
-    WorldState& getWorld() {
-      return m_world;
-    }
-
-   private:
-    WorldState m_world{};
   }
 
-  // ── Outbound Routing ──
+  WorldState& getWorld() { return m_world; }
+
+  // Outbound Routing
 
   template <typename PayloadT, typename EnumT>
   void sendToEsp(const PayloadT& payload, EnumT type, uint64_t timestamp_us) {
@@ -104,6 +99,7 @@ class SimBridge {
   }
 
  private:
+  WorldState m_world{};
   UDPSocket m_simListener;
   UDPSocket m_simSender;
   UDPSocket m_vizSender;
@@ -193,18 +189,18 @@ int main() {
     bridge.sendToViz(payload, SimPayloadType::PHYSICS, header.timestamp_us);
   });
 
-  // 2. ESP -> Sim (Actuator)
-  bridge.on<ActuatorPayload>(PayloadType::ACTUATOR, [&](ActuatorPayload payload,
-                                                        PacketHeader header) {
+  // 2. ESP -> Sim (Driver)
+  bridge.on<DriverPayload>(PayloadType::DRIVER, [&](DriverPayload payload,
+                                                    PacketHeader header) {
     // ---- MANIPULATION ZONE ----
     // Simulate mechanical failure, drop commands, cap limits, etc.
     // e.g., if (simulate_deadband) payload.command = 0.0f;
 
-    printf("[esp] act_id=%u  cmd=%.2f\n", payload.actuator_id, payload.command);
+    printf("[esp] act_id=%u  cmd=%.2f\n", payload.driver_id, payload.command);
 
     // Forwarding
-    bridge.sendToSim(payload, PayloadType::ACTUATOR, nowMicros());
-    bridge.sendToViz(payload, PayloadType::ACTUATOR, header.timestamp_us);
+    bridge.sendToSim(payload, PayloadType::DRIVER, nowMicros());
+    bridge.sendToViz(payload, PayloadType::DRIVER, header.timestamp_us);
   });
 
   bridge.run();

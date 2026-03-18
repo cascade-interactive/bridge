@@ -3,12 +3,13 @@
 #include <cstdio>
 #include <cstring>
 
-// ── Identity ──────────────────────────────────────────────────────────────────
+// Identity
 
 static constexpr uint32_t PACKET_MAGIC  = 0x4C594E4E;
 static constexpr uint8_t PACKET_VERSION = 0x01;
 
-// ── Flags ─────────────────────────────────────────────────────────────────────
+// Flags
+// Used as bitmasks so we can use & for multiple flags at once.
 
 enum PacketFlags : uint8_t {
   FLAG_NONE      = 0x00,
@@ -18,69 +19,68 @@ enum PacketFlags : uint8_t {
   FLAG_NO_CRC    = 0x08,  // crc32 is 0x00000000, skip compute and verify
 };
 
-// ── Payload type ──────────────────────────────────────────────────────────────
+// Payload type
 
 enum class PayloadType : uint8_t {
 
-  // Core protocol (0x00–0x1F) -- project-agnostic, never change
+  // Core (0x00–0x1F) project-agnostic
   HEARTBEAT = 0x00,
   ACK       = 0x01,
   LOG       = 0x02,
 
-  // Common physical quantities (0x20–0x3F) -- quantities, not sensors
-  // These are what a thing IS doing, not what hardware measured it
+  // Common physical quantities (0x20–0x3F)
+  // Sensor agnostic
   POSITION     = 0x20,
   VELOCITY     = 0x21,
   ACCELERATION = 0x22,
-  ORIENTATION  = 0x23,  // always body→world, scalar-last quaternion
+  ORIENTATION  = 0x23,
   ANGULAR_RATE = 0x24,
-  ACTUATOR     = 0x25,  // single-channel generic
+  DRIVER       = 0x25,  // single-channel generic
 
-  // Project-defined (0x40–0xFF) -- each project owns this range entirely
+  // Project-defined (0x40–0xFF)
   PROJECT_BASE = 0x40,
 
   UNKNOWN = 0xFF,
 };
 
-// ── Device ID ─────────────────────────────────────────────────────────────────
+// Device ID
 
 enum class DeviceID : uint8_t {
   SIM    = 0x00,
   BRIDGE = 0x01,
   ESP_0  = 0x02,
-  ESP_1  = 0x03,
-  ESP_2  = 0x04,
-  ESP_3  = 0x05,
+  // abilty to add more devices in the future, e.g. ESP_1, STM_2 or such
 };
 
-// ── Reference frame ───────────────────────────────────────────────────────────
+// Reference frame
 
 enum class FrameID : uint8_t {
-  BODY  = 0x00,  // relative to vehicle
-  WORLD = 0x01,  // arbitrary world origin
+  BODY  = 0x00,  // Relative to entity
+  WORLD = 0x01,  // World origin
   NED   = 0x02,  // North-East-Down
-  ECEF  = 0x03,  // Earth-Centered Earth-Fixed
+  ECEF  = 0x03,  // Earth-Centered Earth-Fixed (for future experiments)
 };
 
-// ── Header (24 bytes) ─────────────────────────────────────────────────────────
+// Header (24 bytes)
 
 #pragma pack(push, 1)
 struct PacketHeader {
-  uint32_t magic;         // 4B -- always PACKET_MAGIC
-  uint8_t version;        // 1B -- PACKET_VERSION
-  uint8_t payload_type;   // 1B -- PayloadType
-  uint8_t device_id;      // 1B -- DeviceID of sender
-  uint8_t flags;          // 1B -- PacketFlags bitmask
-  uint32_t sequence;      // 4B -- rolling counter per device, never reused
-  uint16_t length;        // 2B -- payload size in bytes only
-  uint16_t reserved;      // 2B -- zero for now, free for future use
-  uint64_t timestamp_us;  // 8B -- sender-side sim clock, microseconds
+  uint32_t magic;         // 4B : PACKET_MAGIC
+  uint8_t version;        // 1B : PACKET_VERSION
+  uint8_t payload_type;   // 1B : PayloadType
+  uint8_t device_id;      // 1B : DeviceID of sender
+  uint8_t flags;          // 1B : PacketFlags bitmask
+  uint32_t sequence;      // 4B : rolling counter per device
+  uint16_t length;        // 2B : payload size in bytes only
+  uint16_t reserved;      // 2B : zero for now, free for future use
+  uint64_t timestamp_us;  // 8B : sender-side sim clock, microseconds
 };
 #pragma pack(pop)
 
+// Fail compile if PacketHeader is not 24 or itll break again
 static_assert(sizeof(PacketHeader) == 24, "PacketHeader must be 24 bytes");
 
-// ── Template packet wrapper ───────────────────────────────────────────────────
+// Template packet wrapper
 // Wire layout: [PacketHeader 24B] [T payload] [uint32_t crc32 4B]
 // CRC covers header + payload bytes only, not the crc32 field itself.
 // If FLAG_NO_CRC is set, crc32 is always 0x00000000 on the wire.
@@ -93,7 +93,7 @@ struct Packet {
 };
 #pragma pack(pop)
 
-// ── CRC32 (Ethernet/ZIP polynomial 0xEDB88320) ────────────────────────────────
+// CRC32 (Ethernet/ZIP polynomial 0xEDB88320)
 
 inline uint32_t crc32Compute(const void* data, size_t length) {
   const auto* buf = static_cast<const uint8_t*>(data);
@@ -112,8 +112,25 @@ inline uint32_t packetCRC(const Packet<T>& p) {
   return crc32Compute(&p.header, sizeof(PacketHeader) + sizeof(T));
 }
 
-// ── Build ─────────────────────────────────────────────────────────────────────
+// The Packet Builder
 
+/**
+ * @brief Constructs a fully initialized Packet<T> with header, payload, and optional CRC.
+ *
+ * Fills out all header fields (magic, version, payload type, device ID, flags,
+ * sequence number, payload length, and timestamp), copies the payload, and
+ * computes the CRC32 over the packet unless FLAG_NO_CRC is set.
+ *
+ * @tparam T           Payload type 
+ * @param payload      Payload data to embed in the packet
+ * @param type         Logical payload type identifier (encoded as uint8_t in header)
+ * @param device       Source device ID (encoded as uint8_t in header)
+ * @param flags        Packet behavior flags (e.g., ACK, NO_CRC, BROADCAST)
+ * @param sequence     Monotonic sequence number for ordering / loss detection
+ * @param timestamp_us Timestamp in microseconds (typically from a monotonic clock)
+ *
+ * @return Packet<T>   Fully constructed packet ready for transmission.
+ */
 template <typename T>
 inline Packet<T> buildPacket(const T& payload, PayloadType type,
                              DeviceID device, uint8_t flags, uint32_t sequence,
@@ -133,7 +150,7 @@ inline Packet<T> buildPacket(const T& payload, PayloadType type,
   return p;
 }
 
-// ── Validate ──────────────────────────────────────────────────────────────────
+// Validate
 
 inline bool validatePacket(const uint8_t* buf, int size, bool verbose = true) {
   if (size < static_cast<int>(sizeof(PacketHeader))) {
@@ -182,7 +199,7 @@ inline bool validatePacket(const uint8_t* buf, int size, bool verbose = true) {
   return true;
 }
 
-// ── Extraction helpers ────────────────────────────────────────────────────────
+// Extraction helpers
 
 inline PacketHeader extractHeader(const uint8_t* buf) {
   PacketHeader h{};
