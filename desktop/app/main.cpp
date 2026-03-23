@@ -106,7 +106,10 @@ class SimBridge {
   UDPSocket m_vizSender;
   SerialPort m_esp;
 
-  uint32_t m_seq = 0;
+  RingBuffer<RawPacket, 128> m_inboundSerialBuffer;
+  RingBuffer<RawPacket, 128> m_inboundUDPBuffer;
+
+  std::atomic<uint32_t> m_seq{0};
   std::string m_serialBuf;
 
   // The registry: stores type-agnostic wrappers that point to your typed lambdas
