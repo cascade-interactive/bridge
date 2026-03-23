@@ -3,14 +3,15 @@
 #include <stddef.h>
 #include <array>
 #include <atomic>
+#include "packet.hpp"
 
 enum class PacketSource : uint8_t {
     UDP    = 0,
     Serial = 1
 };
 
-struct PacketEnvelope { // type erased since conflict with packet.hpp #TODO change name
-    std::array<uint8_t, 256> data;
+struct RawPacket {
+    std::array<uint8_t, sizeof(PacketHeader) + 256 + sizeof(uint32_t)> data;
     size_t length;
     PacketSource source;
 };
@@ -35,7 +36,6 @@ class RingBuffer {
             buffer[current_head] = item;
             std::atomic_thread_fence(std::memory_order_release);
             head.store(next_head, std::memory_order_relaxed);
-
 
             return true;
         }
