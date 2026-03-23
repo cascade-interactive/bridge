@@ -33,7 +33,9 @@ class RingBuffer {
             }
 
             buffer[current_head] = item;
-            head.store(next_head, std::memory_order_release);
+            std::atomic_thread_fence(std::memory_order_release);
+            head.store(next_head, std::memory_order_relaxed);
+
 
             return true;
         }
