@@ -12,6 +12,7 @@
 #include "payloads.hpp"
 #include "payloads/sim_payloads.hpp"
 #include "structs/states.hpp"
+#include "bridge/ring_buffer.hpp"
 
 // ── Configuration ───────────────────────────────────────────────────────────
 
