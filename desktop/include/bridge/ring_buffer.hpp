@@ -9,7 +9,7 @@ enum class PacketSource : uint8_t {
     Serial = 1
 };
 
-struct Packet {
+struct PacketEnvelope { // type erased since conflict with packet.hpp #TODO change name
     std::array<uint8_t, 256> data;
     size_t length;
     PacketSource source;
