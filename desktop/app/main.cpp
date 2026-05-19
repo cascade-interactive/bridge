@@ -14,7 +14,6 @@
 #include "payloads/sim_payloads.hpp"
 #include "structs/states.hpp"
 
-
 // ── Configuration ───────────────────────────────────────────────────────────
 
 namespace Config {
@@ -103,12 +102,39 @@ class SimBridge {
                      sizeof(packet));
   }
 
+  bool queuePacket(RingBuffer<RawPacket, 128>& queue, const uint8_t* buf,
+                   size_t size, PacketSource source) {
+    if (size > RawPacket{}.data.size()) {
+      return false;
+    }
+
+    RawPacket packet{};
+    std::memcpy(packet.data.data(), buf, size);
+    packet.length = size;
+    packet.source = source;
+
+    return queue.push(packet);
+  }
+
+  void drainInbound() {
+    RawPacket packet{};
+
+    while (m_inboundUDPBuffer.pop(packet)) {
+      processPacket(packet.data.data(), packet.length, "udp");
+    }
+
+    while (m_inboundSerialBuffer.pop(packet)) {
+      processPacket(packet.data.data(), packet.length, "serial");
+    }
+  }
+
   // ── Main Loop ──
   void run() {
     std::cout << "Bridge running..." << std::endl;
     while (true) {
       pollSim();
       pollEsp();
+      drainInbound();
     }
   }
 
@@ -132,8 +158,13 @@ class SimBridge {
   void pollSim() {
     std::string data = m_simListener.receive();
     if (!data.empty()) {
-      processPacket(reinterpret_cast<const uint8_t*>(data.data()), data.size(),
-                    "udp");
+      /* processPacket(reinterpret_cast<const uint8_t*>(data.data()), data.size(),
+                    "udp"); */
+      if (!queuePacket(m_inboundUDPBuffer,
+                       reinterpret_cast<const uint8_t*>(data.data()),
+                       data.size(), PacketSource::UDP)) {
+        printf("[udp] inbound queue full, dropping packet\n");
+      }
     }
   }
 
@@ -153,7 +184,7 @@ class SimBridge {
         continue;
       }
 
-      if (h.length > 1024) {
+      if (h.length > 256) {
         m_serialBuf.erase(0, 4);
         continue;
       }
@@ -162,13 +193,19 @@ class SimBridge {
       if (m_serialBuf.size() < totalSize)
         break;  // Wait for the rest of the frame
 
-      processPacket(reinterpret_cast<const uint8_t*>(m_serialBuf.data()),
-                    totalSize, "serial");
+      /* processPacket(reinterpret_cast<const uint8_t*>(m_serialBuf.data()),
+                    totalSize, "serial"); */
+      if (!queuePacket(m_inboundSerialBuffer,
+                       reinterpret_cast<const uint8_t*>(m_serialBuf.data()),
+                       totalSize, PacketSource::Serial)) {
+        printf("[serial] inbound queue full, dropping packet\n");
+      }
+
       m_serialBuf.erase(0, totalSize);
     }
   }
 
-  void processPacket(const uint8_t* buf, int size, const char* source) {
+  void processPacket(const uint8_t* buf, size_t size, const char* source) {
     if (!validatePacket(buf, size, false))
       return;
 
