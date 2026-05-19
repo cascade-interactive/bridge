@@ -23,7 +23,7 @@ class PayloadType:
     ACCELERATION = 0x22
     ORIENTATION  = 0x23
     ANGULAR_RATE = 0x24
-    ACTUATOR     = 0x25
+    DRIVER       = 0x25
     PHYSICS      = 0x40
     BAROMETER    = 0x41
 
@@ -63,13 +63,13 @@ BAROMETER_FORMAT = "<ff"
 PHYSICS_SIZE = struct.calcsize(PHYSICS_FORMAT)
 BAROMETER_SIZE = struct.calcsize(BAROMETER_FORMAT)
 
-ACTUATOR_FORMAT = "<Bff"  # actuator_id, command, feedback
-ACTUATOR_SIZE   = struct.calcsize(ACTUATOR_FORMAT)  # 9 bytes
+DRIVER_FORMAT = "<Bff"  # driver_id, command, feedback
+DRIVER_SIZE   = struct.calcsize(DRIVER_FORMAT)  # 9 bytes
 
-def parse_actuator_payload(data: bytes) -> dict:
-    actuator_id, command, feedback = struct.unpack_from(ACTUATOR_FORMAT, data, HEADER_SIZE)
+def parse_driver_payload(data: bytes) -> dict:
+    driver_id, command, feedback = struct.unpack_from(DRIVER_FORMAT, data, HEADER_SIZE)
     return {
-        "actuator_id": actuator_id,
+        "driver_id": driver_id,
         "command":     command,
         "feedback":    feedback,
     }

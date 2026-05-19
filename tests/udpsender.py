@@ -1,7 +1,7 @@
 import socket
 import time
 
-from build_packet import (build_packet, build_physics_payload, validate_packet, parse_header, parse_actuator_payload, PayloadType, DeviceID, FLAG_NO_CRC)
+from build_packet import (build_packet, build_physics_payload, validate_packet, parse_header, parse_driver_payload, PayloadType, DeviceID, FLAG_NO_CRC)
 
 
 class Elevator:
@@ -86,10 +86,10 @@ while True:
         if validate_packet(data, verbose=True):
             header = parse_header(data)
 
-        if header['payload_type'] == PayloadType.ACTUATOR:
-            actuator = parse_actuator_payload(data)
-            elevator.brake_force = actuator['command']
-            print(f"Received actuator command: {actuator['command']:.2f} N")
+        if header['payload_type'] == PayloadType.DRIVER:
+            driver = parse_driver_payload(data)
+            elevator.brake_force = driver['command']
+            print(f"Received driver command: {driver['command']:.2f} N")
                 
                                
 
@@ -133,4 +133,3 @@ while True:
 
     time.sleep(0.01)  # ~100hz
     
-

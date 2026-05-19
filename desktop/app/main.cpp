@@ -6,13 +6,14 @@
 #include <string>
 #include <unordered_map>
 
+#include "bridge/ring_buffer.hpp"
 #include "bridge/sockets/SerialPort.hpp"
 #include "bridge/sockets/UDPSocket.hpp"
 #include "packet.hpp"
 #include "payloads.hpp"
 #include "payloads/sim_payloads.hpp"
 #include "structs/states.hpp"
-#include "bridge/ring_buffer.hpp"
+
 
 // ── Configuration ───────────────────────────────────────────────────────────
 
@@ -63,6 +64,18 @@ class SimBridge {
   WorldState& getWorld() { return m_world; }
 
   // Outbound Routing
+  // CIRCULAR BUFFER :
+  // Queue forwarding
+  // enqueueOutbound(target, packet_bytes):
+  //   if target queue is full:
+  //     apply target policy,
+  //   else:
+  //     push target + packet bytes + length into the circular buffer
+  // drainOutbound():
+  //   for each target queue:
+  //     while queue has data and transport can accept a write:
+  //       pop one packet and send it to ESP, sim, or viz
+  // Its a todo still
 
   template <typename PayloadT, typename EnumT>
   void sendToEsp(const PayloadT& payload, EnumT type, uint64_t timestamp_us) {
@@ -194,18 +207,19 @@ int main() {
   });
 
   // 2. ESP -> Sim (Driver)
-  bridge.on<DriverPayload>(PayloadType::DRIVER, [&](DriverPayload payload,
-                                                    PacketHeader header) {
-    // ---- MANIPULATION ZONE ----
-    // Simulate mechanical failure, drop commands, cap limits, etc.
-    // e.g., if (simulate_deadband) payload.command = 0.0f;
+  bridge.on<DriverPayload>(
+      PayloadType::DRIVER, [&](DriverPayload payload, PacketHeader header) {
+        // ---- MANIPULATION ZONE ----
+        // Simulate mechanical failure, drop commands, cap limits, etc.
+        // e.g., if (simulate_deadband) payload.command = 0.0f;
 
-    printf("[esp] act_id=%u  cmd=%.2f\n", payload.driver_id, payload.command);
+        printf("[esp] driver_id=%u  cmd=%.2f\n", payload.driver_id,
+               payload.command);
 
-    // Forwarding
-    bridge.sendToSim(payload, PayloadType::DRIVER, nowMicros());
-    bridge.sendToViz(payload, PayloadType::DRIVER, header.timestamp_us);
-  });
+        // Forwarding
+        bridge.sendToSim(payload, PayloadType::DRIVER, nowMicros());
+        bridge.sendToViz(payload, PayloadType::DRIVER, header.timestamp_us);
+      });
 
   bridge.run();
 

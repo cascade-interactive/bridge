@@ -48,18 +48,18 @@ static float stoppingTime(float speed) {
   return speed / NET_DECEL;
 }
 
-static void sendActuator(float command) {
-  ActuatorPayload payload{};
-  payload.actuator_id = 0;
+static void sendDriver(float command) {
+  DriverPayload payload{};
+  payload.driver_id = 0;
   payload.command     = command;
   payload.feedback    = 0.0f;
 
-  auto packet = buildPacket(payload, PayloadType::ACTUATOR, DeviceID::ESP_0,
+  auto packet = buildPacket(payload, PayloadType::DRIVER, DeviceID::ESP_0,
                             FLAG_NONE,  // serial -- compute CRC
                             g_seq++, nowMicros());
 
   const int wireSize =
-      sizeof(PacketHeader) + sizeof(ActuatorPayload) + sizeof(uint32_t);
+      sizeof(PacketHeader) + sizeof(DriverPayload) + sizeof(uint32_t);
   Serial.write(reinterpret_cast<const uint8_t*>(&packet), wireSize);
 }
 
@@ -77,7 +77,7 @@ static void onPhysicsPacket(const PhysicsStatePayload& payload) {
       g_braking    = false;
       g_brakeForce = 0.0f;
     }
-    sendActuator(g_brakeForce);
+    sendDriver(g_brakeForce);
     return;
   }
 
@@ -108,7 +108,7 @@ static void onPhysicsPacket(const PhysicsStatePayload& payload) {
     }
   }
 
-  sendActuator(g_brakeForce);
+  sendDriver(g_brakeForce);
 }
 
 // ── Serial framer ─────────────────────────────────────────────────────────────
