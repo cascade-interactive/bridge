@@ -24,7 +24,7 @@ constexpr int VIZ_OUTBOUND_PORT   = 4200;
 constexpr const char* SIM_IP = "127.0.0.1";
 constexpr const char* VIZ_IP = "127.0.0.1";
 
-constexpr const char* ESP_PORT = "COM3";
+constexpr const char* ESP_PORT = "COM6";
 constexpr int ESP_BAUD         = 115200;
 }  // namespace Config
 
