@@ -12,15 +12,15 @@ simulated vehicle state -> desktop bridge -> UART -> ESP32 -> telemetry back to 
 
 The simulation side can be Unreal Engine 5, but I also included a Python mock simulator so I can test the firmware and bridge without launching UE5 every time.
 
-Right now this project is mostly about the communication layer: getting data from a simulator, packing it into a binary protocol, sending it to the ESP32, parsing it safely, and recovering when the serial stream gets corrupted.
+Right now this project is mostly about the communication. This means that I am focused on getting data from the simulator, packing it into a binary protocol, sending it to the ESP32, parsing it safely, and recovering when the serial stream gets corrupted.
 
-It is not a full flight controller yet. It is the HIL bridge I would use before testing actual control logic on physical hardware.
+This is not a full flight controller, but rather what I would use before testing actual control logic on physical hardware.
 
 ---
 
 ## Why I Made This
 
-I wanted a way to test embedded control logic without immediately putting it on a real drone or rocket and hoping nothing stupid happens.
+I wanted a way to test embedded control logic without immediately putting it on a real drone or maybe even rocket and hoping nothing stupid happens.
 
 Pure simulation is useful, but it skips a lot of the annoying embedded problems:
 
@@ -74,13 +74,13 @@ It also reads telemetry coming back from the ESP32.
 
 The ESP32 code is a PlatformIO project.
 
-It reads the UART stream, searches for valid packets, checks the CRC, and dispatches the payload based on packet type.
+It reads the UART stream, searches for valid packets, checks the CRC, and dispatches the payload based on packet type. For now it's very basic and just there to debug the bridge.
 
 ---
 
 ## Packet Format
 
-I used a simple binary protocol instead of JSON because I wanted something closer to what I would actually use on a small embedded target.
+I used a simple binary protocol instead of JSON because I wanted something closer to what I would actually use on a microcontroller.
 
 Each packet looks like this:
 
@@ -126,7 +126,7 @@ That means the firmware can recover from:
 - stale packets
 - stream desync
 
-The goal is not to make UART magical. The goal is to fail cleanly and resync instead of silently feeding garbage into the controller.
+This means it can fail cleanly and resync instead of feeding garbage into the controller.
 
 ---
 
@@ -154,39 +154,6 @@ For now, the sequence number is mostly used for diagnostics and stale-packet det
 
 /tests
   Python mock simulator for generating UDP test data.
-```
-
----
-
-## Build and Run
-
-### 1. Build the Desktop Bridge
-
-Requires CMake and a C++17 compiler.
-
-```bash
-cd desktop
-mkdir build
-cd build
-cmake ..
-make
-./hil_bridge
-```
-
-### 2. Flash the ESP32
-
-Requires PlatformIO.
-
-```bash
-cd esp/controller
-pio run --target upload
-```
-
-### 3. Start the Mock Simulator
-
-```bash
-cd tests
-python sim_mock.py
 ```
 
 ---
